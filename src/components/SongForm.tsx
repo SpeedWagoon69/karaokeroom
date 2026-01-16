@@ -64,7 +64,7 @@ export default function SongForm() {
       <div className="glass-card">
         <div className="header">
           <h2>Karaoke Night 🎤</h2>
-          <p>Pide tu turno y brilla en el escenario</p>
+          <p>Pide tu cancion y brilla en el escenario</p>
         </div>
 
         <form onSubmit={handleSubmit}>
