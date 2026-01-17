@@ -173,12 +173,22 @@ const organizeQueue = (rawSongs: Song[], limit: number) => {
                   )}
                 </div>
               </div>
-              <button 
-                onClick={() => supabase.from('songs').delete().eq('id', song.id)} 
-                style={doneBtnStyle}
-              >
-                LISTO
-              </button>
+              <button
+  onClick={async () => {
+    const { error } = await supabase
+      .from('songs')
+      .delete()
+      .eq('id', song.id);
+
+    if (error) {
+      console.error('Error al eliminar canción:', error.message);
+      alert('No se pudo eliminar la canción');
+    }
+  }}
+  style={doneBtnStyle}
+>
+  LISTO
+</button>
             </div>
           ))}
         </div>
