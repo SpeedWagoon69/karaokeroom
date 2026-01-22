@@ -19,6 +19,40 @@ export default function AdminView() {
   const [songsPerTurn, setSongsPerTurn] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  // --- NOTIFICACIONES ---
+  const requestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      alert('Este navegador no soporta notificaciones');
+      return false;
+    }
+
+    if (Notification.permission === 'granted') return true;
+
+    if (Notification.permission !== 'denied') {
+      const permission = await Notification.requestPermission();
+      return permission === 'granted';
+    }
+
+    return false;
+  };
+
+  const showNewSongNotification = (song: Song) => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') return;
+
+    try {
+      new Notification('🎤 Nueva canción en la fila', {
+        body: `${song.singer_first_name} ${song.singer_last_name} — ${song.title}`,
+        // icon: '/icon.png' // opcional: añade ruta a un icono si quieres
+      });
+    } catch (err) {
+      // No bloquear en caso de error con las notificaciones
+      // eslint-disable-next-line no-console
+      console.error('Error mostrando notificación', err);
+    }
+  };
+  // -----------------------
+
   // 1. Algoritmo de organización (Puro y directo)
   // Reemplaza la función organizeQueue existente por esta versión
 const organizeQueue = (rawSongs: Song[], limit: number) => {
@@ -88,6 +122,13 @@ const organizeQueue = (rawSongs: Song[], limit: number) => {
     e.preventDefault();
     const { data } = await supabase.from('karaoke_config').select('admin_password').single();
     if (passwordInput === data?.admin_password) {
+      // Pedimos permiso de notificaciones al iniciar sesión
+      const allowed = await requestNotificationPermission();
+      if (!allowed) {
+        // aviso no obligatorio para continuar, pero recomendable
+        alert("Necesitas aceptar notificaciones para recibir avisos de nuevas canciones");
+      }
+
       setIsAuthenticated(true);
       fetchData();
     } else {
@@ -96,16 +137,36 @@ const organizeQueue = (rawSongs: Song[], limit: number) => {
   };
 
   // 3. Suscripción Realtime Total
-  useEffect(() => {
-    if (!isAuthenticated) return;
+useEffect(() => {
+  if (!isAuthenticated) return;
 
-    const channel = supabase.channel('admin_main_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'songs' }, () => fetchData())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'karaoke_config' }, () => fetchData())
-      .subscribe();
-    
-    return () => { supabase.removeChannel(channel); };
-  }, [isAuthenticated, fetchData]);
+  const channel = supabase.channel('admin_main_channel')
+    // Notificar/actualizar cuando entre una nueva canción
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'songs' },
+      (payload: { new: Song }) => {
+        const newSong = payload.new as Song;
+        showNewSongNotification(newSong);
+        fetchData();
+      }
+    )
+    // Escuchar DELETE para refrescar cuando alguien borre una canción desde otra instancia
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'songs' },
+      () => {
+        fetchData();
+      }
+    )
+    // Seguimos escuchando cambios en la configuración
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'karaoke_config' }, () => fetchData())
+    .subscribe();
+  
+  return () => { supabase.removeChannel(channel); };
+}, [isAuthenticated, fetchData]);
+
+
 
   const updateTurns = async (val: number) => {
     // Actualizamos en DB; el evento Realtime hará que fetchData() se ejecute en todos lados
@@ -166,6 +227,8 @@ const organizeQueue = (rawSongs: Song[], limit: number) => {
                   <strong style={{ fontSize: '1.2rem', color: '#fff' }}>{song.title}</strong>
                   <div style={{ fontSize: '0.9rem' }}>
                     <span style={{ color: '#c084fc', fontWeight: 'bold' }}>{song.singer_first_name}</span>
+                    {' '}
+                    <span style={{ color: '#c084fc', fontWeight: 'bold' }}>{song.singer_last_name}</span>
                     <span style={{ color: '#94a3b8' }}> — {song.artist}</span>
                   </div>
                   {song.description && (
